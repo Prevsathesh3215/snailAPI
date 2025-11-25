@@ -6,6 +6,7 @@ class SnailAPI {
   constructor() {
     this.routes = {};
     this.server = net.createServer(this._handleConnection.bind(this));
+    this.middlewares = [];
   }
 
   listen(port, host, callback) {
@@ -14,6 +15,32 @@ class SnailAPI {
 
   get(path, handler) {
     this.routes[path] = handler;
+  }
+
+  post(path, handler) {
+    this.routes[path] = handler;
+  }
+
+  use(fn) {
+    this.middlewares.push(fn);
+  }
+
+  runMiddlewares(req, res, middlewares, done) {
+    let index = 0;
+
+    const next = (err) => {
+      if (err) {
+        res.statusCode = 500;
+        return res.end("Middleware error: " + err);
+      }
+
+      const mw = middlewares[index++];
+      if (!mw) return done();
+
+      mw(req, res, next);
+    };
+
+    next();
   }
 
   _reqBuilder(data) {
@@ -101,7 +128,9 @@ class SnailAPI {
         },
       };
 
-      await handler(req, res);
+      this.runMiddlewares(req, res, this.middlewares, () => {
+        handler(req, res);
+      });
     });
 
     socket.on("close", () => socket.end());

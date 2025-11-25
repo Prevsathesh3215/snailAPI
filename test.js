@@ -14,6 +14,11 @@ app.get("/json", async (req, res) => {
   await res.json({ name: "Sathesh", age: 26 });
 });
 
+app.use((req, res, next) => {
+  console.log("Middleware ran:", req.method, req.path);
+  next();
+});
+
 app.listen(4221, "localhost", () => {
   console.log("SnailAPI running on port 4221");
 });
