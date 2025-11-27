@@ -2,6 +2,26 @@ import { SnailAPI, readBinary, readText } from "./snailApi.js";
 
 const app = new SnailAPI();
 
+app.useJWT({
+  secret: "abc123",
+  expiresIn: "2h",
+});
+
+app.post("/login", (req, res) => {
+  const token = app.sign({ id: 99, name: "MyDude" });
+
+  console.log(token);
+  res.cookie("token", token, { httpOnly: true, path: "/", maxAge: 3600 });
+  res.json({ message: "Logged in" });
+});
+
+app.get("/profile", app.protect(), (req, res) => {
+  res.json({
+    message: "Authenticated request!",
+    user: req.user,
+  });
+});
+
 app.get("/about", async (req, res) => {
   await res.send("Hello from SnailAPI!");
 });

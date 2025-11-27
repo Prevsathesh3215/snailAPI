@@ -1,6 +1,7 @@
 import * as net from "net";
 import fs from "fs/promises";
 import { Buffer } from "buffer";
+import jwt from "jsonwebtoken";
 
 class SnailAPI {
   constructor() {
@@ -9,16 +10,61 @@ class SnailAPI {
     this.middlewares = [];
   }
 
+  useJWT(config) {
+    this.jwtConfig = {
+      secret: config.secret,
+      expiresIn: config.expiresIn || "1h",
+      issuer: config.issuer || "snailapi",
+    };
+
+    return this;
+  }
+
+  sign(payload) {
+    const token = jwt.sign(payload, this.jwtConfig.secret, {
+      expiresIn: this.jwtConfig.expiresIn,
+      issuer: this.jwtConfig.issuer,
+    });
+
+    return token;
+  }
+
+  protect(cookieName = "token") {
+    return (req, res, next) => {
+      try {
+        if (!this.jwtConfig) throw new Error("JWT not configured");
+
+        console.log(req);
+        const token = req.cookies[cookieName];
+
+        if (!token) {
+          res.statusCode = 401;
+          return res.json({ error: "Unauthorized: no token" });
+        }
+
+        const decoded = jwt.verify(token, this.jwtConfig.secret, {
+          issuer: this.jwtConfig.issuer,
+        });
+
+        req.user = decoded;
+        next();
+      } catch (err) {
+        res.statusCode = 401;
+        res.json({ error: "Unauthorized", detail: err.message });
+      }
+    };
+  }
+
   listen(port, host, callback) {
     this.server.listen(port, host, callback);
   }
 
-  get(path, handler) {
-    this.routes[path] = handler;
+  get(path, ...handlers) {
+    this.routes[path] = handlers;
   }
 
-  post(path, handler) {
-    this.routes[path] = handler;
+  post(path, ...handlers) {
+    this.routes[path] = handlers;
   }
 
   use(fn) {
@@ -48,29 +94,35 @@ class SnailAPI {
     const pathSearchValue = /\/[A-Za-z0-9._~\-\/]*/;
     const decodedStr = data.toString("utf-8");
 
-    //HTTP METHOD FINDER
     const httpMethod = searchSpecifics(methodSearchValue, decodedStr);
-
-    // PATH FINDER
     const pathValue = searchSpecifics(pathSearchValue, decodedStr);
 
-    // HEADER FINDER
     const [, ...headerLines] = decodedStr.split("\r\n");
-
     const headerText = headerLines.join("\r\n");
     const headers = this._parseHeaders(headerText);
+    // console.log(headers);
+
+    // Extract cookies
+    const cookieHeader = headers.cookie || "";
+    const cookies = {};
+    cookieHeader.split(";").forEach((c) => {
+      const [k, ...v] = c.trim().split("=");
+      if (k && v.length) cookies[k] = v.join("=");
+    });
 
     const [rawHeaders, body] = decodedStr.split("\r\n\r\n");
 
     return {
-      header: headers,
+      headers,
+      cookies,
       method: httpMethod[0],
       path: pathValue[0],
-      body: body,
+      body,
     };
   }
 
   _parseHeaders(raw) {
+    console.log(raw);
     const lines = raw.split("\r\n");
     const headers = {};
 
@@ -98,14 +150,35 @@ class SnailAPI {
       }
 
       const res = {
-        send: (text, contentType = "text/plain") => {
+        _headers: {},
+        send(text, contentType = "text/plain") {
           const buffer = Buffer.from(text);
-          const header =
-            "HTTP/1.1 200 OK\r\n" +
-            `Content-Type: ${contentType}\r\n` +
-            `Content-Length: ${buffer.length}\r\n\r\n`;
 
+          let header = "HTTP/1.1 200 OK\r\n";
+          header += `Content-Type: ${contentType}\r\n`;
+          header += `Content-Length: ${buffer.length}\r\n`;
+
+          if (this._headers["Set-Cookie"]) {
+            for (const c of this._headers["Set-Cookie"]) {
+              header += `Set-Cookie: ${c}\r\n`;
+            }
+          }
+
+          header += "\r\n";
           socket.write(header + text);
+        },
+
+        cookie: (name, value, options = {}) => {
+          let cookieStr = `${name}=${value}`;
+          if (options.httpOnly) cookieStr += "; HttpOnly";
+          if (options.path) cookieStr += `; Path=${options.path || "/"}`;
+          if (options.maxAge) cookieStr += `; Max-Age=${options.maxAge}`;
+          if (options.secure) cookieStr += "; Secure";
+          if (options.sameSite)
+            cookieStr += `; SameSite=${options.sameSite || "Strict"}`;
+
+          if (!res._headers["Set-Cookie"]) res._headers["Set-Cookie"] = [];
+          res._headers["Set-Cookie"].push(cookieStr);
         },
 
         json: (obj) => {
@@ -129,13 +202,28 @@ class SnailAPI {
       };
 
       this.runMiddlewares(req, res, this.middlewares, () => {
-        handler(req, res);
+        const handlers = this.routes[req.path];
+        let index = 0;
+
+        const next = () => {
+          const h = handlers[index++];
+          if (!h) return;
+
+          if (h.length === 3) {
+            h(req, res, next);
+          } else {
+            h(req, res);
+          }
+        };
+
+        next();
       });
     });
 
     socket.on("close", () => socket.end());
   }
 }
+
 
 async function readText(filePath) {
   const data = await fs.readFile(filePath, "utf8");
