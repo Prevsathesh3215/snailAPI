@@ -2,8 +2,9 @@ import * as net from "net";
 import fs from "fs/promises";
 import { Buffer } from "buffer";
 import jwt from "jsonwebtoken";
+import * as cookie from "cookie"
 
-class SnailAPI {
+class ZappAPI {
   constructor() {
     this.routes = {};
     this.server = net.createServer(this._handleConnection.bind(this));
@@ -14,7 +15,7 @@ class SnailAPI {
     this.jwtConfig = {
       secret: config.secret,
       expiresIn: config.expiresIn || "1h",
-      issuer: config.issuer || "snailapi",
+      issuer: config.issuer || "zappAPI",
     };
 
     return this;
@@ -50,6 +51,7 @@ class SnailAPI {
         next();
       } catch (err) {
         res.statusCode = 401;
+        console.log(err);
         res.json({ error: "Unauthorized", detail: err.message });
       }
     };
@@ -102,13 +104,7 @@ class SnailAPI {
     const headers = this._parseHeaders(headerText);
     // console.log(headers);
 
-    // Extract cookies
-    const cookieHeader = headers.cookie || "";
-    const cookies = {};
-    cookieHeader.split(";").forEach((c) => {
-      const [k, ...v] = c.trim().split("=");
-      if (k && v.length) cookies[k] = v.join("=");
-    });
+    const cookies = cookie.parseCookie(headers.cookie);
 
     const [rawHeaders, body] = decodedStr.split("\r\n\r\n");
 
@@ -122,7 +118,7 @@ class SnailAPI {
   }
 
   _parseHeaders(raw) {
-    console.log(raw);
+    // console.log(raw);
     const lines = raw.split("\r\n");
     const headers = {};
 
@@ -241,4 +237,4 @@ function searchSpecifics(searchValue, decodedStr) {
   return foundItem;
 }
 
-export { SnailAPI, readText, readBinary };
+export { ZappAPI };

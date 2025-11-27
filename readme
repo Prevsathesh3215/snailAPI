@@ -1,0 +1,22 @@
+
+# ZappAPI
+
+SnailAPI is a tiny, lightweight Node.js HTTP server framework built on the net module. It's great as a live example to learn more about HTTP servers and how to create one using the basic net module provided by Node. It uses Express-like methods and can perform basic Express commands like .get() .post() and .use()
+
+
+It also supports:
+
+- Middleware usage
+- JWT auth with cookies
+- Static file serving
+- A tiny DB for testing and small projects!
+- JSON responses
+
+
+Just run 
+```
+node test
+````
+
+on your device and use Postman to try it out!
+

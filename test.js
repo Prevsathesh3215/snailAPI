@@ -1,6 +1,8 @@
-import { SnailAPI, readBinary, readText } from "./snailApi.js";
+import { ZappAPI } from "./zappAPI.js";
+import TinyDB from "./tinyDB.js";
 
-const app = new SnailAPI();
+const app = new ZappAPI();
+app.db = new TinyDB("data.json");
 
 app.useJWT({
   secret: "abc123",
@@ -22,8 +24,17 @@ app.get("/profile", app.protect(), (req, res) => {
   });
 });
 
+app.post("/set", app.protect(),  (req, res) => {
+  app.db.set("foo", req.body);
+  res.json({ ok: true });
+});
+
+app.get("/get", (req, res) => {
+  res.json({ value: app.db.get("foo") });
+});
+
 app.get("/about", async (req, res) => {
-  await res.send("Hello from SnailAPI!");
+  await res.send("Hello from ZappAPI!");
 });
 
 app.get("/text", async (req, res) => {
@@ -40,5 +51,5 @@ app.use((req, res, next) => {
 });
 
 app.listen(4221, "localhost", () => {
-  console.log("SnailAPI running on port 4221");
+  console.log("ZappAPI running on port 4221");
 });
